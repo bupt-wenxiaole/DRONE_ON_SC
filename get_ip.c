@@ -62,6 +62,9 @@ int main (int argc, char *argv[])
             fprintf(f, "%s\n", ip_info);   
         }
         fclose(f);
+        printf("start master \n");
+        MPI_Barrier(MPI_COMM_WORLD);
+
     }
     if ( my_rank > 0 )
     {
@@ -94,7 +97,8 @@ int main (int argc, char *argv[])
         sprintf(portStr, ":%d", port);
         strcat(workerConfig, portStr);
         MPI_Send (workerConfig, MAX_STRING, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
-
+        MPI_Barrier(MPI_COMM_WORLD);
+        printf("start worker \n");
     }
 
 /*
