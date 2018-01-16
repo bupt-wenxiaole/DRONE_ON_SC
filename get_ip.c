@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h> /* for strncpy */
 #include "mpi.h"
@@ -12,9 +13,9 @@
 
 const int MAX_STRING = 10000;
 
-void *addID(void *id){
+void *addPort(void *id){
     int *id_ptr = (int *)id;
-    *id_ptr += 100;
+    *id_ptr += 10000;
     return NULL; 
 }
 int main (int argc, char *argv[])
@@ -28,13 +29,39 @@ int main (int argc, char *argv[])
     MPI_Comm_rank ( MPI_COMM_WORLD, &my_rank);
     if ( my_rank == 0 )
     {
+        int fd;
+        struct ifreq ifr;
+        fd = socket(AF_INET, SOCK_DGRAM, 0);
+        /* I want to get an IPv4 IP address */
+        ifr.ifr_addr.sa_family = AF_INET;
+        /* I want IP address attached to "eth0" */
+        strncpy(ifr.ifr_name, "enp130s0f0", IFNAMSIZ-1);
+        ioctl(fd, SIOCGIFADDR, &ifr);
+        close(fd);
+        
+        char *IPaddress = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+        char masterConfig[MAX_STRING];
+        int id = my_rank;
+        sprintf(masterConfig, "%d,", id);
+        strcat(masterConfig, IPaddress);
+        int port = 10000;
+        char portStr [10];
+        sprintf(portStr, ":%d", port);
+        strcat(masterConfig, portStr);
         printf ("this scripts for print ip information of processors\n");
+        FILE *f = fopen("config.txt", "w");
+        if (f == NULL)
+        {
+            printf("Error opening file!\n");
+            exit(1);
+        }
+        fprintf(f, "%s\n", masterConfig);
         for (int q = 1; q < comm_sz; q++ )
         {
             MPI_Recv(ip_info, MAX_STRING, MPI_CHAR, q, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            printf("%s\n",ip_info);
+            fprintf(f, "%s\n", ip_info);   
         }
-
+        fclose(f);
     }
     if ( my_rank > 0 )
     {
@@ -44,25 +71,29 @@ int main (int argc, char *argv[])
         /* I want to get an IPv4 IP address */
         ifr.ifr_addr.sa_family = AF_INET;
         /* I want IP address attached to "eth0" */
-        strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+        strncpy(ifr.ifr_name, "enp130s0f0", IFNAMSIZ-1);
         ioctl(fd, SIOCGIFADDR, &ifr);
         close(fd);
-        pthread_t inc_x_thread;
+        //pthread_t inc_x_thread;
         int id = my_rank;
-        if(pthread_create(&inc_x_thread, NULL, addID, &id)) {
+        /*if(pthread_create(&inc_x_thread, NULL, addID, &id)) {
             fprintf(stderr, "Error creating thread\n");
             return 1;
         }
         if(pthread_join(inc_x_thread, NULL)) {
             fprintf(stderr, "Error joining thread\n");
             return 2;
-        }
-        char addNum[5];
-        sprintf(addNum, "%d", id);
+        }*/
+        char workerConfig[MAX_STRING];
+        sprintf(workerConfig, "%d,", id);
         /* send result */
-        char *result = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
-        strcat(result, addNum);
-        MPI_Send (result, MAX_STRING, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+        char *IPaddress = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+        strcat(workerConfig, IPaddress);
+        int port = my_rank + 10000;
+        char portStr [10];
+        sprintf(portStr, ":%d", port);
+        strcat(workerConfig, portStr);
+        MPI_Send (workerConfig, MAX_STRING, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
 
     }
 
