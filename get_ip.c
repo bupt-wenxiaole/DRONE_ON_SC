@@ -12,7 +12,7 @@
 #include <pthread.h>
 
 const int MAX_STRING = 10000;
-
+const int BUFFER_SIZE = 500;
 void *addPort(void *id){
     int *id_ptr = (int *)id;
     *id_ptr += 10000;
@@ -38,7 +38,6 @@ int main (int argc, char *argv[])
         strncpy(ifr.ifr_name, "enp130s0f0", IFNAMSIZ-1);
         ioctl(fd, SIOCGIFADDR, &ifr);
         close(fd);
-        
         char *IPaddress = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
         char masterConfig[MAX_STRING];
         int id = my_rank;
@@ -49,10 +48,11 @@ int main (int argc, char *argv[])
         sprintf(portStr, ":%d", port);
         strcat(masterConfig, portStr);
         printf ("this scripts for print ip information of processors\n");
+        //Receives the Worker IP and fills it in config file
         FILE *f = fopen("config.txt", "w");
         if (f == NULL)
         {
-            printf("Error opening file!\n");
+            printf("Error opening config file!\n");
             exit(1);
         }
         fprintf(f, "%s\n", masterConfig);
@@ -62,8 +62,27 @@ int main (int argc, char *argv[])
             fprintf(f, "%s\n", ip_info);   
         }
         fclose(f);
-        printf("start master \n");
+        //Use popen to start master process and catch output in log file
+        char logName [50];
+        sprintf(logName, "%d.log", id);
+        FILE *fl = fopen(logName, "w");
+        if (fl == NULL)
+        {
+            printf("Error opening log file!\n");
+            exit(1);
+        }
+        FILE *fp;
+        int status;
+        char buffer[BUFFER_SIZE];
+        fp = popen("./master", "r");
+        if(fp == NULL)
+        {
+            printf("popen error\n");
+            exit(1);
+        }
         MPI_Barrier(MPI_COMM_WORLD);
+        while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
+            fprintf(fl, "%s", buffer);
 
     }
     if ( my_rank > 0 )
@@ -98,7 +117,28 @@ int main (int argc, char *argv[])
         strcat(workerConfig, portStr);
         MPI_Send (workerConfig, MAX_STRING, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
-        printf("start worker \n");
+        //use popen() to start worker process and catch output in the log
+        char logName [50];
+        sprintf(logName, "%d.log", id);
+        FILE *fl = fopen(logName, "w");
+        if (fl == NULL)
+        {
+            printf("Error opening log file!\n");
+            exit(1);
+        }
+        FILE *fp;
+        int status;
+        char buffer[BUFFER_SIZE];
+        char command [20];
+        sprintf(command, "./worker2 %d %d", id,  comm_sz - 1);
+        fp = popen(command, "r");
+        if(fp == NULL)
+        {
+            printf("popen error\n");
+            exit(1);
+        }
+        while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
+            fprintf(fl, "%s", buffer);
     }
 
 /*
